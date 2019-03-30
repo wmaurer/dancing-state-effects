@@ -1,4 +1,6 @@
-import React, { FC, useState, useCallback } from 'react';
+import React, { useCallback, useReducer } from 'react';
+import { unionize, ofType, UnionOf } from 'unionize';
+import { Option, some, none } from 'fp-ts/lib/Option';
 
 type ItemData = { id: number; name: string };
 
@@ -12,9 +14,8 @@ const itemData: ItemData[] = [
 
 let lastColor: string;
 
-function generateNewColor() {
-    lastColor = 'rgba(' + Math.random() * 255 + ',' + Math.random() * 255 + ',' + Math.random() * 255 + ',1)';
-}
+const generateNewColor = () =>
+    (lastColor = 'rgba(' + Math.random() * 255 + ',' + Math.random() * 255 + ',' + Math.random() * 255 + ',1)');
 
 const Row = React.memo<{
     item: ItemData;
@@ -49,30 +50,44 @@ const Row = React.memo<{
     );
 });
 
-function App() {
-    let [items, setItems] = useState(itemData);
-    let [editingId, setEditingId] = useState<number | null>(null);
+type State = {
+    items: ItemData[];
+    editingId: Option<number>;
+};
+
+const Action = unionize({ saveItem: ofType<ItemData>(), editItem: ofType<number>() }, { value: 'payload' });
+export type Action = UnionOf<typeof Action>;
+
+const App = () => {
+    const reducer = (state: State, action: Action): State =>
+        Action.match({
+            saveItem: item => ({ ...state, items: state.items.map(it => (it.id === item.id ? item : it)) }),
+            editItem: id => ({ ...state, editingId: some(id) }),
+        })(action);
+
+    const [state, dispatch] = useReducer(reducer, {
+        items: itemData,
+        editingId: none,
+    });
 
     generateNewColor();
 
-    const onEdit = useCallback((id: number) => {
-        setEditingId(id);
-    }, []);
-
-    const onSave = useCallback(
-        (item: ItemData) => {
-            setItems(items.map(it => (it.id === item.id ? item : it)));
-        },
-        [items],
-    );
+    const onEdit = useCallback((id: number) => dispatch(Action.editItem(id)), []);
+    const onSave = useCallback((item: ItemData) => dispatch(Action.saveItem(item)), []);
 
     return (
         <div>
-            {items.map(item => (
-                <Row key={item.id} item={item} editing={editingId === item.id} onEdit={onEdit} onSave={onSave} />
+            {state.items.map(item => (
+                <Row
+                    key={item.id}
+                    item={item}
+                    editing={state.editingId.fold(false, id => id === item.id)}
+                    onEdit={onEdit}
+                    onSave={onSave}
+                />
             ))}
         </div>
     );
-}
+};
 
 export default App;

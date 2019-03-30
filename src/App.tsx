@@ -40,9 +40,9 @@ function App() {
 
     generateNewColor();
 
-    function onEdit(id: number) {
+    const onEdit = useCallback((id: number) => {
         setEditingId(id);
-    }
+    }, []);
 
     return (
         <div>

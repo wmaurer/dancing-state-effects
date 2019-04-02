@@ -1,6 +1,8 @@
 import React, { useCallback, useReducer } from 'react';
 import { unionize, ofType, UnionOf } from 'unionize';
 import { Option, some, none } from 'fp-ts/lib/Option';
+import { useObservable, useEventCallback } from 'rxjs-hooks';
+import { withLatestFrom, map, tap } from 'rxjs/operators';
 
 type ItemData = { id: number; name: string };
 
@@ -16,6 +18,8 @@ let lastColor: string;
 
 const generateNewColor = () =>
     (lastColor = 'rgba(' + Math.random() * 255 + ',' + Math.random() * 255 + ',' + Math.random() * 255 + ',1)');
+
+const ChangedIndicator = () => <div style={{ backgroundColor: lastColor, width: 25, height: 25 }} />;
 
 const Row = React.memo<{
     item: ItemData;
@@ -45,7 +49,7 @@ const Row = React.memo<{
                     item.name
                 )}
             </div>
-            <div style={{ backgroundColor: lastColor, width: 25, height: 25 }} />
+            <ChangedIndicator />
         </div>
     );
 });
@@ -58,22 +62,38 @@ type State = {
 const Action = unionize({ saveItem: ofType<ItemData>(), editItem: ofType<number>() }, { value: 'payload' });
 export type Action = UnionOf<typeof Action>;
 
-const App = () => {
-    const reducer = (state: State, action: Action): State =>
-        Action.match({
-            saveItem: item => ({ ...state, items: state.items.map(it => (it.id === item.id ? item : it)) }),
-            editItem: id => ({ ...state, editingId: some(id) }),
-        })(action);
+const reducer = (state: State, action: Action): State =>
+    Action.match({
+        saveItem: item => ({ ...state, items: state.items.map(it => (it.id === item.id ? item : it)) }),
+        editItem: id => ({ ...state, editingId: some(id) }),
+    })(action);
 
-    const [state, dispatch] = useReducer(reducer, {
-        items: itemData,
-        editingId: none,
-    });
+const App = () => {
+    const [dispatch, state] = useEventCallback<Action, State>(
+        (event$, state$) => {
+            console.log('here');
+            return event$.pipe(
+                tap(e => console.log(e)),
+                withLatestFrom(state$),
+                map(([action, state]) => reducer(state, action)),
+            );
+        },
+        {
+            items: itemData,
+            editingId: none,
+        },
+    );
+    // const state = useObservable((state$) => )
+
+    // const [state, dispatch] = useReducer(reducer, {
+    //     items: itemData,
+    //     editingId: none,
+    // });
 
     generateNewColor();
 
-    const onEdit = useCallback((id: number) => dispatch(Action.editItem(id)), []);
-    const onSave = useCallback((item: ItemData) => dispatch(Action.saveItem(item)), []);
+    const onEdit = useCallback((id: number) => dispatch(Action.editItem(id)), [dispatch]);
+    const onSave = useCallback((item: ItemData) => dispatch(Action.saveItem(item)), [dispatch]);
 
     return (
         <div>
